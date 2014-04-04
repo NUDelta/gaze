@@ -43,7 +43,7 @@ jinja_environment = jinja2.Environment(
 PAGINATED_HTML = """
 <article class='auto-paginate'>
 <h2 class='blue text-large'>Did you know...?</h2>
-<p>Cats are <em class='yellow'>solar-powered.</em> The time they spend
+<p>That Zak is awesome <em class='yellow'>solar-powered.</em> The time they spend
 napping in direct sunlight is necessary to regenerate their internal
 batteries. Cats that do not receive sufficient charge may exhibit the
 following symptoms: lethargy, irritability, and disdainful glares. Cats
@@ -53,6 +53,24 @@ process to maximize your enjoyment of your cat.</p><br/><p>
 For more cat maintenance tips, tap to view the website!</p>
 </article>
 """
+
+GAZE_CARD = """ <article>
+                  <figure>
+                    <img src="http://distilleryimage4.s3.amazonaws.com/db323422a92111e39037121f5250425c_8.jpg" height="100%">
+                  </figure>
+                  <section>
+                    <h1 class="text-large">Sheridan</h1>
+                    <p class="text-x-small">
+                      <img class="icon-small" src="https://lh3.googleusercontent.com/-CZYp5sBaxFs/AAAAAAAAAAI/AAAAAAAAA_s/e4w4bDLKcOk/s120-c/photo.jpg">
+                      @TheZallen
+                    </p>
+                    <hr>
+                    <p class="text-normal">
+                      #beautiful #fall<br>
+                      #orange #autumn
+                    </p>
+                  </section>
+                </article> """
 
 
 class _BatchCallback(object):
@@ -160,12 +178,15 @@ class MainHandler(webapp2.RequestHandler):
     """Insert a timeline item."""
     logging.info('Inserting timeline item')
     body = {
+        'html': GAZE_CARD,
+        'menuItems': [{'action': 'DELETE'}],
         'notification': {'level': 'DEFAULT'}
     }
-    if self.request.get('html') == 'on':
-      body['html'] = [self.request.get('message')]
-    else:
-      body['text'] = self.request.get('message')
+    #if self.request.get('html') == 'on':
+      # body['html'] = [self.request.get('message')]
+      #body['html'] = GAZE_CARD
+    #else:
+      #body['text'] = self.request.get('message')
 
     media_link = self.request.get('imageUrl')
     if media_link:
@@ -178,7 +199,7 @@ class MainHandler(webapp2.RequestHandler):
       media = None
 
     # self.mirror_service is initialized in util.auth_required.
-    self.mirror_service.timeline().insert(body=body, media_body=media).execute()
+    self.mirror_service.timeline().insert(body=body).execute()
     return  'A timeline item has been inserted.'
 
   def _insert_paginated_item(self):

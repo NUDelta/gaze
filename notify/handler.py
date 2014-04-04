@@ -56,16 +56,17 @@ class NotifyHandler(webapp2.RequestHandler):
 
   def _handle_locations_notification(self, data):
     """Handle locations notification."""
-    location = self.mirror_service.locations().get(id=data['itemId']).execute()
-    text = 'Python Quick Start says you are at %s by %s.' % \
+    # location = self.mirror_service.locations().get(id=data['itemId']).execute()
+    text = 'Gaze says you are at %s by %s.' % \
         (location.get('latitude'), location.get('longitude'))
     body = {
         'text': text,
         'location': location,
-        'menuItems': [{'action': 'NAVIGATE'}],
+        'menuItems': [{'action': 'NAVIGATE'},
+                      {'action': 'DELETE'}],
         'notification': {'level': 'DEFAULT'}
     }
-    self.mirror_service.timeline().insert(body=body).execute()
+    # self.mirror_service.timeline().insert(body=body).execute()
 
   def _handle_timeline_notification(self, data):
     """Handle timeline notification."""
