@@ -123,6 +123,16 @@ limitations under the License.
       </form>
 
       <form action="/" method="post">
+        <input type="hidden" name="operation" value="insertInstagram">
+        <textarea name="latitude" class="span4">Latitude</textarea><br/>
+        <textarea name="longitude" class="span4">Longitude</textarea><br/>
+        <textarea name="tag" class="span4">Tag</textarea><br/>
+        <button class="btn btn-block" type="submit">
+          Find Instagram photo
+        </button>
+      </form>
+
+      <form action="/" method="post">
         <input type="hidden" name="operation" value="insertItem">
         <input type="hidden" name="message" value="Something Beautiful...">
         <input type="hidden" name="imageUrl"

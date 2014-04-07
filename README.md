@@ -1,4 +1,4 @@
-Google Mirror API's Quickstart for Python
+Gaze Mirror API
 ========================
 
 The documentation for this quickstart is maintained on developers.google.com.

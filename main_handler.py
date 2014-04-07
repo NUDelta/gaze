@@ -14,6 +14,8 @@
 
 """Request Handler for /main endpoint."""
 
+from instagram import client, subscriptions
+
 __author__ = 'alainv@google.com (Alain Vongsouvanh)'
 
 
@@ -35,6 +37,66 @@ from oauth2client.appengine import StorageByKeyName
 from model import Credentials
 import util
 
+from instagram import client, subscriptions
+
+
+
+CONFIG = {
+    'client_id': 'b828a5d4c1dd449c9a7b4ab229a51a20',
+    'client_secret': '0353d4008b844783b21d27782afd5708',
+    'redirect_uri': 'http://localhost:8080/oauth_callback'
+}
+
+unauthenticated_api = client.InstagramAPI(**CONFIG)
+
+def process_tag_update(update):
+    print update
+
+reactor = subscriptions.SubscriptionsReactor()
+reactor.register_callback(subscriptions.SubscriptionType.TAG, process_tag_update)
+
+
+def home():
+    try:
+        url = unauthenticated_api.get_authorize_url()
+        return '<a href="%s">Connect with Instagram</a>' % url
+    except Exception, e:
+        print e
+
+
+def on_callback():
+    code = request.GET.get("code")
+    if not code:
+        return 'Missing code'
+    try:
+        access_token, user_info = unauthenticated_api.exchange_code_for_access_token(code)
+        if not access_token:
+            return 'Could not get access token'
+        
+        api = client.InstagramAPI(access_token=access_token)
+        recent_media, next = api.user_recent_media()
+        photos = []
+        for media in recent_media:
+            photos.append('<img src="%s"/>' % media.images['thumbnail'].url)
+        return ''.join(photos)
+    except Exception, e:
+        print e
+
+
+def on_realtime_callback():
+    mode = request.GET.get("hub.mode")
+    challenge = request.GET.get("hub.challenge")
+    verify_token = request.GET.get("hub.verify_token")
+    if challenge: 
+        return challenge
+    else:
+        x_hub_signature = request.header.get('X-Hub-Signature')
+        raw_response = request.body.read()
+        try:
+            reactor.process(CONFIG['client_secret'], raw_response, x_hub_signature)
+        except subscriptions.SubscriptionVerifyError:
+            print "Signature mismatch"
+
 
 jinja_environment = jinja2.Environment(
     loader=jinja2.FileSystemLoader(os.path.dirname(__file__)))
@@ -54,24 +116,9 @@ For more cat maintenance tips, tap to view the website!</p>
 </article>
 """
 
-GAZE_CARD = """ <article>
-                  <figure>
-                    <img src="http://distilleryimage4.s3.amazonaws.com/db323422a92111e39037121f5250425c_8.jpg" height="100%">
-                  </figure>
-                  <section>
-                    <h1 class="text-large">Sheridan</h1>
-                    <p class="text-x-small">
-                      <img class="icon-small" src="https://lh3.googleusercontent.com/-CZYp5sBaxFs/AAAAAAAAAAI/AAAAAAAAA_s/e4w4bDLKcOk/s120-c/photo.jpg">
-                      @TheZallen
-                    </p>
-                    <hr>
-                    <p class="text-normal">
-                      #beautiful #fall<br>
-                      #orange #autumn
-                    </p>
-                  </section>
-                </article> """
 
+#execfile("", "b828a5d4c1dd449c9a7b4ab229a51a20", "0353d4008b844783b21d27782afd5708", "http://gazeglass.appspot.com/redirect", "", "4482b18aa99a4f319d782e4613d1069a")
+#subprocess.call(['get_access_token.py', "b828a5d4c1dd449c9a7b4ab229a51a20", "0353d4008b844783b21d27782afd5708", "http://gazeglass.appspot.com/redirect", "", "4482b18aa99a4f319d782e4613d1069a"])
 
 class _BatchCallback(object):
   """Class used to track batch request responses."""
@@ -141,6 +188,7 @@ class MainHandler(webapp2.RequestHandler):
         'insertSubscription': self._insert_subscription,
         'deleteSubscription': self._delete_subscription,
         'insertItem': self._insert_item,
+        'insertInstagram': self._insert_instagram,
         'insertPaginatedItem': self._insert_paginated_item,
         'insertItemWithAction': self._insert_item_with_action,
         'insertItemAllUsers': self._insert_item_all_users,
@@ -187,16 +235,49 @@ class MainHandler(webapp2.RequestHandler):
       #body['html'] = GAZE_CARD
     #else:
       #body['text'] = self.request.get('message')
+    
 
-    media_link = self.request.get('imageUrl')
-    if media_link:
-      if media_link.startswith('/'):
-        media_link = util.get_full_url(self, media_link)
-      resp = urlfetch.fetch(media_link, deadline=20)
-      media = MediaIoBaseUpload(
-          io.BytesIO(resp.content), mimetype='image/jpeg', resumable=True)
-    else:
-      media = None
+    # self.mirror_service is initialized in util.auth_required.
+    self.mirror_service.timeline().insert(body=body).execute()
+    return  'A timeline item has been inserted.'
+
+  def _insert_instagram(self):
+    """Insert a timeline item."""
+    logging.info('Inserting timeline item')
+
+    tag = self.request.get('tag')
+    latitude = self.request.get('latitude')
+    longitude = self.request.get('longitude')
+
+    GAZE_CARD = """ <article>
+                  <figure>
+                    <img src="http://distilleryimage4.s3.amazonaws.com/db323422a92111e39037121f5250425c_8.jpg" height="100%">
+                  </figure>
+                  <section>
+                    <h1 class="text-large">Sheridan</h1>
+                    <p class="text-x-small">
+                      <img class="icon-small" src="https://lh3.googleusercontent.com/-CZYp5sBaxFs/AAAAAAAAAAI/AAAAAAAAA_s/e4w4bDLKcOk/s120-c/photo.jpg">
+                      """ + tag + """
+                    </p>
+                    <hr>
+                    <p class="text-normal">
+                      """ + latitude + """<br>
+                      """ + longitude + """
+                    </p>
+                  </section>
+                </article> """
+
+
+    body = {
+        'html': GAZE_CARD,
+        'menuItems': [{'action': 'DELETE'}],
+        'notification': {'level': 'DEFAULT'}
+    }
+    #if self.request.get('html') == 'on':
+      # body['html'] = [self.request.get('message')]
+      #body['html'] = GAZE_CARD
+    #else:
+      #body['text'] = self.request.get('message')
 
     # self.mirror_service is initialized in util.auth_required.
     self.mirror_service.timeline().insert(body=body).execute()
