@@ -24,6 +24,7 @@ import jinja2
 import logging
 import os
 import webapp2
+import math
 
 from google.appengine.api import memcache
 from google.appengine.api import urlfetch
@@ -33,69 +34,12 @@ from apiclient import errors
 from apiclient.http import MediaIoBaseUpload
 from apiclient.http import BatchHttpRequest
 from oauth2client.appengine import StorageByKeyName
+import json
+import urllib2
+
 
 from model import Credentials
 import util
-
-from instagram import client, subscriptions
-
-
-
-CONFIG = {
-    'client_id': 'b828a5d4c1dd449c9a7b4ab229a51a20',
-    'client_secret': '0353d4008b844783b21d27782afd5708',
-    'redirect_uri': 'http://localhost:8080/oauth_callback'
-}
-
-unauthenticated_api = client.InstagramAPI(**CONFIG)
-
-def process_tag_update(update):
-    print update
-
-reactor = subscriptions.SubscriptionsReactor()
-reactor.register_callback(subscriptions.SubscriptionType.TAG, process_tag_update)
-
-
-def home():
-    try:
-        url = unauthenticated_api.get_authorize_url()
-        return '<a href="%s">Connect with Instagram</a>' % url
-    except Exception, e:
-        print e
-
-
-def on_callback():
-    code = request.GET.get("code")
-    if not code:
-        return 'Missing code'
-    try:
-        access_token, user_info = unauthenticated_api.exchange_code_for_access_token(code)
-        if not access_token:
-            return 'Could not get access token'
-        
-        api = client.InstagramAPI(access_token=access_token)
-        recent_media, next = api.user_recent_media()
-        photos = []
-        for media in recent_media:
-            photos.append('<img src="%s"/>' % media.images['thumbnail'].url)
-        return ''.join(photos)
-    except Exception, e:
-        print e
-
-
-def on_realtime_callback():
-    mode = request.GET.get("hub.mode")
-    challenge = request.GET.get("hub.challenge")
-    verify_token = request.GET.get("hub.verify_token")
-    if challenge: 
-        return challenge
-    else:
-        x_hub_signature = request.header.get('X-Hub-Signature')
-        raw_response = request.body.read()
-        try:
-            reactor.process(CONFIG['client_secret'], raw_response, x_hub_signature)
-        except subscriptions.SubscriptionVerifyError:
-            print "Signature mismatch"
 
 
 jinja_environment = jinja2.Environment(
@@ -116,7 +60,14 @@ For more cat maintenance tips, tap to view the website!</p>
 </article>
 """
 
-
+CONFIG = {
+    'client_id': 'b828a5d4c1dd449c9a7b4ab229a51a20',
+    'client_secret': '0353d4008b844783b21d27782afd5708',
+    'redirect_uri': 'http://localhost:8080/oauth_callback'
+}
+api = client.InstagramAPI(access_token='257974112.b828a5d.1090e8d181b64d81a2d653d2dc60ffcd')
+logging.info('API object created')
+#unauthenticated_api = client.InstagramAPI(**CONFIG)
 #execfile("", "b828a5d4c1dd449c9a7b4ab229a51a20", "0353d4008b844783b21d27782afd5708", "http://gazeglass.appspot.com/redirect", "", "4482b18aa99a4f319d782e4613d1069a")
 #subprocess.call(['get_access_token.py', "b828a5d4c1dd449c9a7b4ab229a51a20", "0353d4008b844783b21d27782afd5708", "http://gazeglass.appspot.com/redirect", "", "4482b18aa99a4f319d782e4613d1069a"])
 
@@ -144,6 +95,37 @@ class _BatchCallback(object):
 
 class MainHandler(webapp2.RequestHandler):
   """Request Handler for the main endpoint."""
+ 
+
+  def distance_on_unit_sphere(lat1, long1, lat2, long2):
+
+    # Convert latitude and longitude to 
+    # spherical coordinates in radians.
+    degrees_to_radians = math.pi/180.0
+        
+    # phi = 90 - latitude
+    phi1 = (90.0 - lat1)*degrees_to_radians
+    phi2 = (90.0 - lat2)*degrees_to_radians
+        
+    # theta = longitude
+    theta1 = long1*degrees_to_radians
+    theta2 = long2*degrees_to_radians
+        
+    # Compute spherical distance from spherical coordinates.
+        
+    # For two locations in spherical coordinates 
+    # (1, theta, phi) and (1, theta, phi)
+    # cosine( arc length ) = 
+    #    sin phi sin phi' cos(theta-theta') + cos phi cos phi'
+    # distance = rho * arc length
+    
+    cos = (math.sin(phi1)*math.sin(phi2)*math.cos(theta1 - theta2) + 
+           math.cos(phi1)*math.cos(phi2))
+    arc = math.acos( cos )
+
+    # Remember to multiply arc by the radius of the earth 
+    # in your favorite set of units to get length.
+    return arc
 
   def _render_template(self, message=None):
     """Render the main page template."""
@@ -245,32 +227,61 @@ class MainHandler(webapp2.RequestHandler):
     """Insert a timeline item."""
     logging.info('Inserting timeline item')
 
-    tag = self.request.get('tag')
+    giventag = self.request.get('tag')
     latitude = self.request.get('latitude')
     longitude = self.request.get('longitude')
+    logging.warning('Watch out!')
 
-    GAZE_CARD = """ <article>
-                  <figure>
-                    <img src="http://distilleryimage4.s3.amazonaws.com/db323422a92111e39037121f5250425c_8.jpg" height="100%">
-                  </figure>
-                  <section>
-                    <h1 class="text-large">Sheridan</h1>
-                    <p class="text-x-small">
-                      <img class="icon-small" src="https://lh3.googleusercontent.com/-CZYp5sBaxFs/AAAAAAAAAAI/AAAAAAAAA_s/e4w4bDLKcOk/s120-c/photo.jpg">
-                      """ + tag + """
-                    </p>
-                    <hr>
-                    <p class="text-normal">
-                      """ + latitude + """<br>
-                      """ + longitude + """
-                    </p>
-                  </section>
-                </article> """
+    data = json.load(urllib2.urlopen('https://api.instagram.com/v1/media/search?lat='+latitude+'&lng='+longitude+'&distance=10&access_token=257974112.b828a5d.1090e8d181b64d81a2d653d2dc60ffcd'))
+    if not data['data']:
+      logging.warning('Nothing within 10m')
+      data = json.load(urllib2.urlopen('https://api.instagram.com/v1/media/search?lat='+latitude+'&lng='+longitude+'&distance=50&access_token=257974112.b828a5d.1090e8d181b64d81a2d653d2dc60ffcd'))
+      if not data['data']:
+        logging.warning('Nothing within 50m')
+        data = json.load(urllib2.urlopen('https://api.instagram.com/v1/media/search?lat='+latitude+'&lng='+longitude+'&distance=100&access_token=257974112.b828a5d.1090e8d181b64d81a2d653d2dc60ffcd'))
+
+    tagfound = False
+    anytag = False
+    for index, item in list(enumerate(data['data'])):
+      if not item['users_in_photo']:
+        if item['tags']:
+          for tag in item['tags']:
+            if tag is giventag:
+              closestphoto = data['data'][index]
+              tagfound = True
+          if not tagfound:
+            closestphoto = data['data'][index]
+            anytag = True
+        if not tagfound and not anytag:
+            closestphoto = data['data'][index]
+
+    logging.warning(closestphoto)
+    pic = closestphoto['images']['standard_resolution']['url']
+    #distance = closestphoto['distance']
+    #data = json.load(urllib2.urlopen('https://api.instagram.com/v1/media/search?lat=42.056889&lng=-87.676521&distance=100&access_token=257974112.b828a5d.1090e8d181b64d81a2d653d2dc60ffcd'))
+    #loc = json.load(urllib2.urlopen("https://api.instagram.com/v1/locations/search?lat="+latitude+"&lng="+longitude+"&access_token=257974112.b828a5d.1090e8d181b64d81a2d653d2dc60ffcd"))
+    #locid = loc['data'][0]['id']
+    #closephotos = json.load(urllib2.urlopen('https://api.instagram.com/v1/locations/'+locid+'/media/recent?access_token=257974112.b828a5d.1090e8d181b64d81a2d653d2dc60ffcd'))
+    #closestphoto = closephotos['data'][0]['images']['standard_resolution']['url']
+    #data = api.media_search(lat='42.03320',lng='-87.672122')
+    #media = api.media(data[0].text)
+    #closestphoto = data['data'][0]['images']['standard_resolution']['url']
+
+    GAZE_CARD = """ <article class="photo">
+                      <img src=""" + pic + """ width="360px" height="360px">
+                    </article>
+                """
 
 
     body = {
         'html': GAZE_CARD,
-        'menuItems': [{'action': 'DELETE'}],
+        'menuItems': [{'action': 'DELETE'},
+                      {'action': 'CUSTOM',
+                        'id': 'complete',
+                        'values': [{
+                          'displayName': 'Complete'
+                        }]
+                      }],
         'notification': {'level': 'DEFAULT'}
     }
     #if self.request.get('html') == 'on':
