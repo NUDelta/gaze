@@ -228,8 +228,11 @@ class MainHandler(webapp2.RequestHandler):
     logging.info('Inserting timeline item')
 
     giventag = self.request.get('tag')
-    latitude = self.request.get('latitude')
-    longitude = self.request.get('longitude')
+    #latitude = self.request.get('latitude')
+    #longitude = self.request.get('longitude')
+    location = self.mirror_service.locations().get(id='latest').execute()
+    latitude = str(location.get('latitude'))
+    longitude = str(location.get('longitude'))
     logging.warning('Watch out!')
 
     data = json.load(urllib2.urlopen('https://api.instagram.com/v1/media/search?lat='+latitude+'&lng='+longitude+'&distance=10&access_token=257974112.b828a5d.1090e8d181b64d81a2d653d2dc60ffcd'))
